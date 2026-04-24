@@ -69,40 +69,56 @@ class RepresentationManager:
 
         all_observations = representation.deductive + representation.explicit
 
-        # Batch embed all observations
-        batch_embed_start = time.perf_counter()
+        # 分批处理，每批最多 10 条（阿里云的text-embedding-v4和text-embedding-v3都有这个限制）
+        BATCH_SIZE = 10
+        total_observations = len(all_observations)
+        
+        for batch_start in range(0, total_observations, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_observations)
+            batch_observations = all_observations[batch_start:batch_end]
+            
+            # Batch embed this batch
+            batch_embed_start = time.perf_counter()
+            observation_texts = [
+                obs.conclusion if isinstance(obs, DeductiveObservation) else obs.content
+                for obs in batch_observations
+            ]
+            
+            try:
+                embeddings = await embedding_client.simple_batch_embed(observation_texts)
+            except ValueError as e:
+                raise exceptions.ValidationException(
+                    f"Observation content exceeds maximum token limit of {settings.EMBEDDING.MAX_INPUT_TOKENS}."
+                ) from e
 
-        observation_texts = [
-            obs.conclusion if isinstance(obs, DeductiveObservation) else obs.content
-            for obs in all_observations
-        ]
-        try:
-            embeddings = await embedding_client.simple_batch_embed(observation_texts)
-        except ValueError as e:
-            raise exceptions.ValidationException(
-                "Observation content exceeds maximum token limit of "
-                + f"{settings.EMBEDDING.MAX_INPUT_TOKENS}."
-            ) from e
+            batch_embed_duration = (time.perf_counter() - batch_embed_start) * 1000
+            accumulate_metric(
+                f"deriver_{message_ids[-1]}_{self.observer}",
+                f"embed_batch_{batch_start//BATCH_SIZE}",
+                batch_embed_duration,
+                "ms",
+            )
 
-        batch_embed_duration = (time.perf_counter() - batch_embed_start) * 1000
-        accumulate_metric(
-            f"deriver_{message_ids[-1]}_{self.observer}",
-            "embed_new_observations",
-            batch_embed_duration,
-            "ms",
-        )
+            # Batch create document objects for this batch
+            create_document_start = time.perf_counter()
+            async with tracked_db("representation_manager.save_representation") as db:
+                batch_new_docs = await self._save_representation_internal(
+                    db,
+                    batch_observations,
+                    embeddings,
+                    message_ids,
+                    session_name,
+                    message_created_at,
+                    message_level_configuration,
+                )
+                new_documents += batch_new_docs
 
-        # Batch create document objects
-        create_document_start = time.perf_counter()
-        async with tracked_db("representation_manager.save_representation") as db:
-            new_documents = await self._save_representation_internal(
-                db,
-                all_observations,
-                embeddings,
-                message_ids,
-                session_name,
-                message_created_at,
-                message_level_configuration,
+            create_document_duration = (time.perf_counter() - create_document_start) * 1000
+            accumulate_metric(
+                f"deriver_{message_ids[-1]}_{self.observer}",
+                f"save_batch_{batch_start//BATCH_SIZE}",
+                create_document_duration,
+                "ms",
             )
 
         create_document_duration = (time.perf_counter() - create_document_start) * 1000

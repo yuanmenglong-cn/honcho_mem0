@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -13,6 +14,7 @@ from src.config import settings
 from src.dependencies import db, tracked_db
 from src.dialectic.chat import agentic_chat, agentic_chat_stream
 from src.exceptions import AuthenticationException, ResourceNotFoundException
+from src.mem0_integration.dialectic_enrich import enrich_representation_with_mem0
 from src.security import JWTParams, require_auth
 from src.telemetry import prometheus_metrics
 from src.utils.search import search
@@ -268,8 +270,20 @@ async def get_representation(
             if options.max_conclusions is not None
             else settings.DERIVER.WORKING_REPRESENTATION_MAX_OBSERVATIONS,
         )
+        representation_md = representation.format_as_markdown()
+
+        # Enrich with mem0 search results if search_query is provided
+        if options.search_query:
+            representation_md = await enrich_representation_with_mem0(
+                representation_md,
+                query=options.search_query,
+                workspace_name=workspace_id,
+                observer=peer_id,
+                observed=options.target if options.target is not None else peer_id,
+            )
+
         return schemas.RepresentationResponse(
-            representation=representation.format_as_markdown()
+            representation=representation_md
         )
     except ValueError as e:
         logger.warning(f"Failed to get representation for peer {peer_id}: {str(e)}")
@@ -416,15 +430,42 @@ async def get_peer_context(
             else settings.DERIVER.WORKING_REPRESENTATION_MAX_OBSERVATIONS,
         )
 
-        # Get the peer card
-        peer_card = await crud.get_peer_card(
-            db, workspace_id, observer=peer_id, observed=observed
-        )
+        # Get the peer card and enrich with mem0 in parallel
+        representation_md: str = representation.format_as_markdown()
+        peer_card: list[str] | None = None
+        if search_query:
+            mem0_task = asyncio.create_task(
+                enrich_representation_with_mem0(
+                    representation_md,
+                    query=search_query,
+                    workspace_name=workspace_id,
+                    observer=peer_id,
+                    observed=observed,
+                )
+            )
+            peer_card_task = asyncio.create_task(
+                crud.get_peer_card(
+                    db, workspace_id, observer=peer_id, observed=observed
+                )
+            )
+            try:
+                representation_md = await mem0_task
+            except Exception as e:
+                logger.warning(f"mem0 enrichment failed: {e}")
+            try:
+                peer_card = await peer_card_task
+            except Exception as e:
+                logger.warning(f"peer card lookup failed: {e}")
+                peer_card = None
+        else:
+            peer_card = await crud.get_peer_card(
+                db, workspace_id, observer=peer_id, observed=observed
+            )
 
         return schemas.PeerContext(
             peer_id=peer_id,
             target_id=observed,
-            representation=representation.format_as_markdown(),
+            representation=representation_md,
             peer_card=peer_card,
         )
     except ValueError as e:

@@ -319,11 +319,18 @@ class DeductionSpecialist(BaseSpecialist):
     peer_card_update_instruction: str = "Update this with `update_peer_card` only for stable biographical/profile facts."
 
     def get_tools(self, *, peer_card_enabled: bool = True) -> list[dict[str, Any]]:
+        tools = list(DEDUCTION_SPECIALIST_TOOLS)
+        # Add mem0 search tool if enabled for cross-session memory access
+        if settings.MEM0.ENABLED and settings.MEM0.ADD_TOOL:
+            from src.utils.agent_tools import TOOLS as AGENT_TOOLS
+            if "search_mem0" in AGENT_TOOLS:
+                tools.insert(2, AGENT_TOOLS["search_mem0"])  # Insert after search_memory
+
         if peer_card_enabled:
-            return DEDUCTION_SPECIALIST_TOOLS
+            return tools
         return [
             t
-            for t in DEDUCTION_SPECIALIST_TOOLS
+            for t in tools
             if t["name"] not in PEER_CARD_TOOL_NAMES
         ]
 
@@ -374,9 +381,12 @@ Create deductive observations by finding logical implications in what's already 
 ## PHASE 1: DISCOVERY
 
 Explore what's actually in memory. Use these tools freely:
-- `get_recent_observations` - See what's been learned recently
-- `search_memory` - Search for specific topics
+- `get_recent_observations` - See what's been learned recently in this workspace
+- `search_memory` - Search for specific topics in this workspace
+- `search_mem0` - Query external long-term memory (cross-session, cross-workspace facts)
 - `search_messages` - See actual conversation content
+
+**IMPORTANT**: When investigating a topic, check BOTH `search_memory` (this workspace) AND `search_mem0` (external memory). The external memory may contain crucial facts from other sessions.
 
 Spend a few tool calls understanding the landscape before creating anything.
 
@@ -467,11 +477,18 @@ class InductionSpecialist(BaseSpecialist):
     peer_card_update_instruction: str = "Only add highly stable profile traits/preferences; do not copy transient conclusions."
 
     def get_tools(self, *, peer_card_enabled: bool = True) -> list[dict[str, Any]]:
+        tools = list(INDUCTION_SPECIALIST_TOOLS)
+        # Add mem0 search tool if enabled for cross-session memory access
+        if settings.MEM0.ENABLED and settings.MEM0.ADD_TOOL:
+            from src.utils.agent_tools import TOOLS as AGENT_TOOLS
+            if "search_mem0" in AGENT_TOOLS:
+                tools.insert(2, AGENT_TOOLS["search_mem0"])  # Insert after search_memory
+
         if peer_card_enabled:
-            return INDUCTION_SPECIALIST_TOOLS
+            return tools
         return [
             t
-            for t in INDUCTION_SPECIALIST_TOOLS
+            for t in tools
             if t["name"] not in PEER_CARD_TOOL_NAMES
         ]
 
@@ -514,9 +531,12 @@ Create inductive observations by finding patterns across multiple observations. 
 ## PHASE 1: DISCOVERY
 
 Explore broadly to find patterns. Use these tools:
-- `get_recent_observations` - Recent learnings
-- `search_memory` - Topic-specific search
+- `get_recent_observations` - Recent learnings in this workspace
+- `search_memory` - Topic-specific search in this workspace
+- `search_mem0` - Query external long-term memory (cross-session patterns)
 - `search_messages` - Actual conversation content
+
+**IMPORTANT**: For pattern discovery, search BOTH `search_memory` (this workspace) AND `search_mem0` (external memory). Cross-session patterns may only be visible in the external memory.
 
 Look at BOTH explicit observations AND deductive ones. Patterns often emerge from synthesizing across both levels.
 

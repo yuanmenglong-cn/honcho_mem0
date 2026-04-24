@@ -532,6 +532,7 @@ class TomlConfigSettingsSource(PydanticBaseSettingsSource):
         "VECTOR_STORE": "vector_store",
         "METRICS": "metrics",
         "TELEMETRY": "telemetry",
+        "MEM0": "mem0",
         "": "app",  # For AppSettings with no prefix
     }
 
@@ -598,7 +599,7 @@ class DBSettings(HonchoSettings):
     model_config = SettingsConfigDict(env_prefix="DB_", extra="ignore")  # pyright: ignore
 
     CONNECTION_URI: str = (
-        "postgresql+psycopg://postgres:postgres@localhost:5432/postgres"
+        "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres"
     )
     SCHEMA: str = "public"
     POOL_CLASS: str = "default"
@@ -837,12 +838,10 @@ def _default_dialectic_levels() -> dict[ReasoningLevel, DialecticLevelSettings]:
             MODEL_CONFIG=_default_model_config(),
             MAX_TOOL_ITERATIONS=1,
             MAX_OUTPUT_TOKENS=250,
-            TOOL_CHOICE="any",
         ),
         "low": DialecticLevelSettings(
             MODEL_CONFIG=_default_model_config(),
             MAX_TOOL_ITERATIONS=5,
-            TOOL_CHOICE="any",
         ),
         "medium": DialecticLevelSettings(
             MODEL_CONFIG=_default_model_config(),
@@ -1203,6 +1202,24 @@ class VectorStoreSettings(HonchoSettings):
         return self
 
 
+class Mem0Settings(HonchoSettings):
+    """Settings for mem0 integration (external AI memory layer)."""
+
+    model_config = SettingsConfigDict(env_prefix="MEM0_", extra="ignore")  # pyright: ignore
+
+    ENABLED: bool = True
+    API_URL: str = "http://localhost:8000"
+    API_KEY: str | None = None
+    TIMEOUT_SECONDS: float = 30.0
+    USER_ID_PREFIX: str = "honcho"
+    SYNC_ON_DERIVE: bool = True
+    ENRICH_DIALECTIC: bool = True
+    ADD_TOOL: bool = True
+    MAX_RESULTS: Annotated[int, Field(default=30, gt=0, le=200)] = 30
+    MIN_SCORE: Annotated[float, Field(default=0.3, ge=0.0, le=1.0)] = 0.3
+    DEDUP_SIMILARITY_THRESHOLD: Annotated[float, Field(default=0.85, ge=0.0, le=1.0)] = 0.85
+
+
 class AppSettings(HonchoSettings):
     # No env_prefix for app-level settings
     model_config = SettingsConfigDict(  # pyright: ignore
@@ -1244,6 +1261,7 @@ class AppSettings(HonchoSettings):
     CACHE: CacheSettings = Field(default_factory=CacheSettings)
     DREAM: DreamSettings = Field(default_factory=DreamSettings)
     VECTOR_STORE: VectorStoreSettings = Field(default_factory=VectorStoreSettings)
+    MEM0: Mem0Settings = Field(default_factory=Mem0Settings)
 
     @field_validator("LOG_LEVEL")
     def validate_log_level(cls, v: str) -> str:

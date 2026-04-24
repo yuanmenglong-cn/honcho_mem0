@@ -2024,6 +2024,16 @@ _TOOL_HANDLERS: dict[str, Callable[[ToolContext, dict[str, Any]], Any]] = {
     "get_reasoning_chain": _handle_get_reasoning_chain,
 }
 
+# Conditionally register mem0 integration tool
+if settings.MEM0.ENABLED and settings.MEM0.ADD_TOOL:
+    from src.mem0_integration.tools import SEARCH_MEM0_TOOL as _SEARCH_MEM0_TOOL
+    from src.mem0_integration.tools import _handle_search_mem0
+
+    TOOLS["search_mem0"] = _SEARCH_MEM0_TOOL
+    _TOOL_HANDLERS["search_mem0"] = _handle_search_mem0
+    DIALECTIC_TOOLS.append(_SEARCH_MEM0_TOOL)
+    DIALECTIC_TOOLS_MINIMAL.append(_SEARCH_MEM0_TOOL)
+
 
 async def create_tool_executor(
     workspace_name: str,

@@ -147,6 +147,25 @@ class OpenAIBackend:
 
         if isinstance(response_format, type):
             params["response_format"] = response_format
+            # Some models (e.g., Qwen) require "json" to appear in messages
+            # when using structured response_format. Ensure it's present.
+            messages: list[dict[str, Any]] = list(params.get("messages", []))
+            has_json_keyword = any(
+                "json" in (m.get("content", "") or "").lower() for m in messages
+            )
+            if not has_json_keyword:
+                system_msg = {
+                    "role": "system",
+                    "content": "Respond with a valid JSON object.",
+                }
+                if messages and messages[0].get("role") == "system":
+                    existing_content = messages[0].get("content", "")
+                    messages[0]["content"] = (
+                        existing_content + " Respond with valid JSON."
+                    )
+                else:
+                    messages.insert(0, system_msg)
+                params["messages"] = messages
             try:
                 response = await self._client.chat.completions.parse(**params)
             except LengthFinishReasonError as exc:
@@ -385,6 +404,24 @@ class OpenAIBackend:
                 "schema": response_format.model_json_schema(),
             },
         }
+        # Some models (e.g., Qwen) require "json" to appear in messages
+        # when using json_schema response_format. Inject a system message if needed.
+        messages: list[dict[str, Any]] = list(structured_params.get("messages", []))
+        has_json_keyword = any(
+            "json" in (m.get("content", "") or "").lower() for m in messages
+        )
+        if not has_json_keyword:
+            system_msg = {
+                "role": "system",
+                "content": "Respond with a valid JSON object.",
+            }
+            # Insert system message at the beginning or prepend to first message
+            if messages and messages[0].get("role") == "system":
+                existing_content = messages[0].get("content", "")
+                messages[0]["content"] = existing_content + " Respond with valid JSON."
+            else:
+                messages.insert(0, system_msg)
+            structured_params["messages"] = messages
         return await self._client.chat.completions.create(**structured_params)
 
     @staticmethod

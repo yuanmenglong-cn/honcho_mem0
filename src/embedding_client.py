@@ -92,14 +92,14 @@ class _EmbeddingClient:
             response = await self.client.aio.models.embed_content(
                 model=self.model,
                 contents=query,
-                config={"output_dimensionality": self.vector_dimensions},
+                config={"output_dimensionality": 1536},
             )
             if not response.embeddings or not response.embeddings[0].values:
                 raise ValueError("No embedding returned from Gemini API")
             return self._validate_embedding_dimensions(response.embeddings[0].values)
         else:  # openai
             response = await self.client.embeddings.create(
-                model=self.model, input=[query]
+                model=self.model, dimensions=1536, input=query #change to text-embedding-v4 which is 1024 by default
             )
             return self._validate_embedding_dimensions(response.data[0].embedding)
 
@@ -137,6 +137,7 @@ class _EmbeddingClient:
                 else:  # openai
                     response = await self.client.embeddings.create(
                         input=batch,
+                        dimensions=1536,#change to text-embedding-v4 which is 1024 by default
                         model=self.model,
                     )
                     embeddings.extend(
@@ -269,7 +270,7 @@ class _EmbeddingClient:
                     response = await self.client.aio.models.embed_content(
                         model=self.model,
                         contents=[item.text for item in batch],
-                        config={"output_dimensionality": self.vector_dimensions},
+                        config={"output_dimensionality": 1536},
                     )
                     if response.embeddings:
                         for item, embedding in zip(
@@ -283,7 +284,7 @@ class _EmbeddingClient:
                                 )
                 else:  # openai
                     response = await self.client.embeddings.create(
-                        model=self.model, input=[item.text for item in batch]
+                        model=self.model, dimensions=1536, input=[item.text for item in batch] #change to text-embedding-v4 which is 1024 by default
                     )
                     for item, embedding_data in zip(batch, response.data, strict=True):
                         result[item.text_id][item.chunk_index] = (

@@ -88,6 +88,8 @@ Always give users the answer *they expect* based on the message history -- the g
 {peer_card_explanation}
 ## AVAILABLE TOOLS
 
+**CRITICAL: When answering questions that require accessing memory or historical information, you MUST use the available tools (especially `search_memory`). Do NOT guess or rely on general knowledge. Always use tools to retrieve accurate information.**
+
 **Observation Tools (read):**
 - `search_memory`: Semantic search over observations about the peer. Use for specific topics.
 - `get_reasoning_chain`: **CRITICAL for grounding answers**. Use this to traverse the reasoning tree for any observation. Shows premises (what it's based on) and conclusions (what depends on it).

@@ -753,6 +753,9 @@ class QueueManager:
                 .order_by(models.Message.id, models.QueueItem.id)
             )
 
+            # ↓↓↓ 加这行：限制最多 10 条消息（阿里云 Qwen 限制）
+            query = query.limit(10)
+
             result = await db.execute(query)
             rows = result.all()
             if not rows:

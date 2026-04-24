@@ -143,6 +143,15 @@ async def process_representation_tasks_batch(
     )
     llm_duration = (time.perf_counter() - llm_start) * 1000
 
+    # Log the observations extracted for this batch
+    explicit_observations = response.content.explicit if hasattr(response.content, 'explicit') else []
+    logger.info(
+        "deriver extracted observations: count=%d, observations=%r",
+        len(explicit_observations),
+        [obs.content[:100] + "..." if len(obs.content) > 100 else obs.content
+         for obs in explicit_observations[:5]],  # Show first 5
+    )
+    
     accumulate_metric(
         f"minimal_deriver_{latest_message.id}_{observed}",
         "llm_call_duration",
@@ -160,6 +169,28 @@ async def process_representation_tasks_batch(
         )
 
     message_ids = [m.id for m in messages if m.peer_name == observed]
+
+    # Sync raw messages to mem0 (fire-and-forget, once per observer)
+    if settings.MEM0.ENABLED and settings.MEM0.SYNC_ON_DERIVE:
+        try:
+            from src.mem0_integration.deriver_sync import schedule_sync_to_mem0
+
+            for observer_peer in observers:
+                if observer_peer == observed:
+                    logger.debug(
+                        "mem0 sync: observer=%r equals observed=%r, self-observation mode",
+                        observer_peer,
+                        observed,
+                    )
+                schedule_sync_to_mem0(
+                    messages=messages,
+                    workspace_name=latest_message.workspace_name,
+                    observer=observer_peer,
+                    observed=observed,
+                    session_name=latest_message.session_name,
+                )
+        except Exception as e:
+            logger.debug(f"Failed to schedule mem0 sync: {e}")
 
     # Convert to Representation and save
     observations = Representation.from_prompt_representation(
@@ -193,6 +224,12 @@ async def process_representation_tasks_batch(
                     latest_message.session_name,
                     latest_message.created_at,
                     message_level_configuration,
+                )
+                logger.info(
+                    "saved representation: observer=%r, observed=%r, explicit=%d",
+                    observer,
+                    observed,
+                    len(observations.explicit),
                 )
             except Exception as e:
                 logger.error(

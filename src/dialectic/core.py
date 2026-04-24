@@ -262,6 +262,20 @@ class DialecticAgent:
 
         prefetched_observations = await self._prefetch_relevant_observations(query)
 
+        # Enrich with mem0 results if available
+        if prefetched_observations:
+            from src.mem0_integration.dialectic_enrich import (
+                enrich_prefetched_observations,
+            )
+
+            prefetched_observations = await enrich_prefetched_observations(
+                original_observations=prefetched_observations,
+                query=query,
+                workspace_name=self.workspace_name,
+                observer=self.observer,
+                observed=self.observed,
+            )
+
         if prefetched_observations:
             user_content = (
                 f"Query: {query}\n\n"
